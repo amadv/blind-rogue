@@ -1,8 +1,19 @@
 import { Audio } from 'expo-av';
-import { Platform } from 'react-native';
+
+// Audio file imports
+const windSound = require('@/assets/audio/wind.mp3');
+const caveSound = require('@/assets/audio/cave.mp3');
+const stepSound = require('@/assets/audio/step.mp3');
 
 let audioContext: AudioContext | null = null;
 let audioModeSet = false;
+
+// Sound cache for reusing audio objects
+const soundCache: { [key: string]: Audio.Sound | null } = {
+  wind: null,
+  cave: null,
+  step: null,
+};
 
 /**
  * Initialize audio context (for web) or ensure audio is ready
@@ -27,6 +38,38 @@ async function initAudio() {
     } catch (error) {
       console.warn('Audio setup error:', error);
     }
+  }
+}
+
+/**
+ * Helper function to play an audio file from cache or load it
+ */
+async function playAudioFile(
+  soundKey: keyof typeof soundCache,
+  audioSource: any,
+  volume: number = 1.0
+): Promise<void> {
+  try {
+    await initAudio();
+    
+    let sound = soundCache[soundKey];
+    
+    // Load sound if not cached
+    if (!sound) {
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        audioSource,
+        { shouldPlay: false, volume }
+      );
+      sound = newSound;
+      soundCache[soundKey] = sound;
+    }
+    
+    // Reset position and play
+    await sound.setPositionAsync(0);
+    await sound.setVolumeAsync(volume);
+    await sound.playAsync();
+  } catch (error) {
+    console.warn(`Error playing ${soundKey} sound:`, error);
   }
 }
 
@@ -133,7 +176,6 @@ function generateTone(
         gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
 
         oscillator.onended = () => resolve();
-        oscillator.onerror = (error) => reject(error);
 
         oscillator.start(ctx.currentTime);
         oscillator.stop(ctx.currentTime + duration);
@@ -159,6 +201,7 @@ function generateTone(
 export async function playWindSound(): Promise<void> {
   try {
     console.log('[Audio] Playing wind sound');
+    /**
     await initAudio();
     // Low frequency noise-like sound - use sawtooth-like effect
     const frequencies = [80, 100, 120];
@@ -169,6 +212,9 @@ export async function playWindSound(): Promise<void> {
     setTimeout(async () => {
       await generateTone(randomFreq * 1.2, 0.2, 'sawtooth', 0.15).catch(() => {});
     }, 50);
+    */
+
+    await playAudioFile('wind', windSound, 0.7);
     console.log('[Audio] Wind sound completed');
   } catch (error) {
     console.warn('playWindSound error:', error);
@@ -182,6 +228,7 @@ export async function playWindSound(): Promise<void> {
 export async function playCaveSound(): Promise<void> {
   try {
     console.log('[Audio] Playing cave sound (path available)');
+    /**
     await initAudio();
     // Faint echo-like sound with multiple tones - higher, clearer than wind
     const baseFreq = 250 + Math.random() * 50; // Random between 250-300Hz
@@ -192,6 +239,8 @@ export async function playCaveSound(): Promise<void> {
     setTimeout(async () => {
       await generateTone(baseFreq * 2, 0.15, 'sine', 0.1).catch(() => {});
     }, 120);
+    */
+    await playAudioFile('cave', caveSound, 0.7);
     console.log('[Audio] Cave sound completed');
   } catch (error) {
     console.warn('playCaveSound error:', error);
@@ -222,9 +271,12 @@ export async function playHearSound(): Promise<void> {
 export async function playStepSound(): Promise<void> {
   try {
     console.log('[Audio] Playing step sound');
+    /**
     await initAudio();
     // Short, subtle step sound
     await generateTone(150, 0.1, 'square', 0.2);
+    */
+    await playAudioFile('step', stepSound, 0.6);
     console.log('[Audio] Step sound completed');
   } catch (error) {
     console.warn('playStepSound error:', error);
@@ -258,7 +310,6 @@ export async function playDeathSound(): Promise<void> {
       gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
 
       oscillator.onended = () => {};
-      oscillator.onerror = () => {};
 
       oscillator.start(ctx.currentTime);
       oscillator.stop(ctx.currentTime + duration);
