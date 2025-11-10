@@ -45,9 +45,19 @@ export default function GameScreen() {
   const [gameState, setGameState] = useState<GameState>(initializeGame());
   const [isHearing, setIsHearing] = useState(false);
 
-  // Reset game when player dies or wins
+  // Reset game when player dies or wins (creates new level)
   const resetGame = useCallback(() => {
     setGameState(initializeGame());
+    setIsHearing(false);
+  }, []);
+
+  // Restart current level (same grid, reset player to start)
+  const restartCurrentLevel = useCallback(() => {
+    setGameState((prev) => ({
+      ...prev,
+      playerPosition: { ...prev.startPosition },
+      status: 'playing',
+    }));
     setIsHearing(false);
   }, []);
 
@@ -110,22 +120,36 @@ export default function GameScreen() {
         console.log('Attempting to move to:', newPos, 'from:', gameState.playerPosition);
 
         if (!isValidPosition(newPos)) {
-          // Fell off edge - die and restart
-          console.log('Fell off edge!');
+          // Fell off edge - die and restart current level
+          console.log('Fell off edge! Dying...');
+          setGameState((prev) => ({ ...prev, status: 'dead' }));
+          
+          // Play death sound and haptic feedback
           await playDeathSound().catch(console.warn);
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
-          setGameState((prev) => ({ ...prev, status: 'dead' }));
+          
+          // Wait for death sound to play, then restart current level
           setTimeout(() => {
-            resetGame();
-          }, 1500);
+            console.log('Restarting current level...');
+            restartCurrentLevel();
+          }, 2000); // Increased delay to let death sound finish
           return;
         }
 
         if (!isPath(gameState.grid, newPos)) {
-          // Hit a wall - can't move
-          console.log('Hit a wall!');
-          await playWindSound().catch(console.warn);
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(console.warn);
+          // Hit a wall / moved in wrong direction - die and restart current level
+          console.log('Hit a wall / moved in wrong direction! Dying...');
+          setGameState((prev) => ({ ...prev, status: 'dead' }));
+          
+          // Play death sound and haptic feedback
+          await playDeathSound().catch(console.warn);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
+          
+          // Wait for death sound to play, then restart current level
+          setTimeout(() => {
+            console.log('Restarting current level...');
+            restartCurrentLevel();
+          }, 2000); // Increased delay to let death sound finish
           return;
         }
 
@@ -152,7 +176,7 @@ export default function GameScreen() {
         console.error('Error in handleMove:', error);
       }
     },
-    [gameState, resetGame]
+    [gameState, resetGame, restartCurrentLevel]
   );
 
   // Track number of pointers during gesture
@@ -245,7 +269,7 @@ export default function GameScreen() {
   // Status message for debugging (optional - can be removed for true blind experience)
   const getStatusMessage = () => {
     if (gameState.status === 'dead') {
-      return 'You fell off the edge! Restarting...';
+      return 'You fell off the edge! Restarting level...';
     }
     if (gameState.status === 'won') {
       return 'You reached the end! Tap to play again.';
