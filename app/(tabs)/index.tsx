@@ -1,6 +1,8 @@
 import {
+  playAttackSound,
   playCaveSound,
   playDeathSound,
+  playGoblinSound,
   playHearSound,
   playStepSound,
   playTickSound,
@@ -10,10 +12,13 @@ import {
 import {
   checkWin,
   getAdjacentPosition,
+  getDistance,
   initializeGame,
+  isGoblinAdjacentToPlayer,
   isPath,
   isTrap,
   isValidPosition,
+  moveGoblin,
   type GameState
 } from '@/utils/gameLogic';
 import * as Haptics from 'expo-haptics';
@@ -48,6 +53,75 @@ export default function GameScreen() {
   const [isHearing, setIsHearing] = useState(false);
   const [trapCountdown, setTrapCountdown] = useState<number | null>(null);
   const trapCountdownRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goblinMovementIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const goblinAudioIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTapTimeRef = React.useRef<number>(0);
+  const gameStateRef = React.useRef<GameState>(gameState);
+  
+  // Keep gameStateRef in sync with gameState
+  React.useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  // Start goblin movement timer (moves goblins every 2 seconds)
+  const startGoblinMovement = useCallback((state: GameState) => {
+    if (goblinMovementIntervalRef.current) {
+      clearInterval(goblinMovementIntervalRef.current);
+    }
+    
+    goblinMovementIntervalRef.current = setInterval(() => {
+      setGameState((prev) => {
+        if (prev.status !== 'playing' || prev.goblins.length === 0) {
+          return prev;
+        }
+
+        const updatedGoblins = prev.goblins.map((goblin) =>
+          moveGoblin(goblin, prev.grid, prev.playerPosition)
+        );
+
+        return {
+          ...prev,
+          goblins: updatedGoblins,
+        };
+      });
+    }, 2000); // Move every 2 seconds
+  }, []);
+
+  // Start goblin audio system (plays sounds based on distance)
+  const startGoblinAudio = useCallback(() => {
+    if (goblinAudioIntervalRef.current) {
+      clearInterval(goblinAudioIntervalRef.current);
+    }
+    
+    goblinAudioIntervalRef.current = setInterval(() => {
+      const currentState = gameStateRef.current;
+      
+      if (currentState.status !== 'playing' || currentState.goblins.length === 0) {
+        return;
+      }
+
+      // Check each goblin's distance and play sound if within 2 blocks
+      currentState.goblins.forEach((goblin) => {
+        const distance = getDistance(goblin.position, currentState.playerPosition);
+        
+        if (distance <= 2) {
+          // Calculate volume based on distance
+          // Distance 0 = volume 1.0, Distance 1 = volume 0.6, Distance 2 = volume 0.2
+          let volume = 1.0;
+          if (distance === 2) {
+            volume = 0.2;
+          } else if (distance === 1) {
+            volume = 0.6;
+          } else if (distance === 0) {
+            volume = 1.0;
+          }
+          
+          // Play goblin sound with calculated volume
+          playGoblinSound(volume).catch(console.warn);
+        }
+      });
+    }, 1000); // Check and play sounds every 1 second
+  }, []);
 
   // Reset game when player dies or wins (creates new level)
   const resetGame = useCallback(() => {
@@ -56,10 +130,25 @@ export default function GameScreen() {
       clearTimeout(trapCountdownRef.current);
       trapCountdownRef.current = null;
     }
+    // Clear goblin movement interval
+    if (goblinMovementIntervalRef.current) {
+      clearInterval(goblinMovementIntervalRef.current);
+      goblinMovementIntervalRef.current = null;
+    }
+    // Clear goblin audio interval
+    if (goblinAudioIntervalRef.current) {
+      clearInterval(goblinAudioIntervalRef.current);
+      goblinAudioIntervalRef.current = null;
+    }
     setTrapCountdown(null);
-    setGameState(initializeGame());
+    const newState = initializeGame();
+    setGameState(newState);
     setIsHearing(false);
-  }, []);
+    // Start goblin movement timer
+    startGoblinMovement(newState);
+    // Start goblin audio system
+    startGoblinAudio();
+  }, [startGoblinMovement, startGoblinAudio]);
 
   // Restart current level (same grid, reset player to start)
   const restartCurrentLevel = useCallback(() => {
@@ -69,13 +158,40 @@ export default function GameScreen() {
       trapCountdownRef.current = null;
     }
     setTrapCountdown(null);
-    setGameState((prev) => ({
-      ...prev,
-      playerPosition: { ...prev.startPosition },
-      status: 'playing',
-    }));
+    setGameState((prev) => {
+      const newState = {
+        ...prev,
+        playerPosition: { ...prev.startPosition },
+        status: 'playing' as const,
+      };
+      // Restart goblin movement timer
+      if (goblinMovementIntervalRef.current) {
+        clearInterval(goblinMovementIntervalRef.current);
+      }
+      startGoblinMovement(newState);
+      return newState;
+    });
     setIsHearing(false);
-  }, []);
+    // Restart goblin audio system
+    if (goblinAudioIntervalRef.current) {
+      clearInterval(goblinAudioIntervalRef.current);
+    }
+    startGoblinAudio();
+  }, [startGoblinMovement, startGoblinAudio]);
+
+  // Initialize goblin movement and audio on mount
+  React.useEffect(() => {
+    startGoblinMovement(gameState);
+    startGoblinAudio();
+    return () => {
+      if (goblinMovementIntervalRef.current) {
+        clearInterval(goblinMovementIntervalRef.current);
+      }
+      if (goblinAudioIntervalRef.current) {
+        clearInterval(goblinAudioIntervalRef.current);
+      }
+    };
+  }, []); // Only run on mount
 
   // Handle hearing (one finger)
   const handleHear = useCallback(
@@ -166,6 +282,35 @@ export default function GameScreen() {
             console.log('Restarting current level...');
             restartCurrentLevel();
           }, 2000); // Increased delay to let death sound finish
+          return;
+        }
+
+        // Check if a goblin is one space away and moving towards the player
+        // If the player moves when a goblin is approaching, the player dies
+        const approachingGoblin = gameState.goblins.find((goblin) => {
+          // Check if goblin is one space away from player
+          const distance = getDistance(goblin.position, gameState.playerPosition);
+          if (distance !== 1) {
+            return false;
+          }
+          
+          // Check if goblin is moving towards the player (its next position is the player's current position)
+          const goblinNextPos = getAdjacentPosition(goblin.position, goblin.direction);
+          return goblinNextPos.x === gameState.playerPosition.x && goblinNextPos.y === gameState.playerPosition.y;
+        });
+
+        if (approachingGoblin) {
+          // Goblin is one space away and moving towards player - player dies if they move
+          console.log('Goblin approaching! Player dies...');
+          setGameState((prev) => ({ ...prev, status: 'dead' }));
+          
+          await playDeathSound().catch(console.warn);
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
+          
+          setTimeout(() => {
+            console.log('Restarting current level...');
+            restartCurrentLevel();
+          }, 2000);
           return;
         }
 
@@ -305,6 +450,54 @@ export default function GameScreen() {
     setPointerCount(numPointers);
   }, []);
 
+  // Handle double tap for backstab
+  const handleDoubleTap = useCallback(() => {
+    if (gameState.status !== 'playing') {
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastTap = now - lastTapTimeRef.current;
+    
+    // Check if this is a double tap (within 300ms, but not the first tap)
+    if (timeSinceLastTap > 0 && timeSinceLastTap < 300) {
+      // Find goblin adjacent to player
+      const adjacentGoblin = gameState.goblins.find((goblin) =>
+        isGoblinAdjacentToPlayer(goblin, gameState.playerPosition)
+      );
+
+      if (adjacentGoblin) {
+        console.log('Backstab! Killing goblin:', adjacentGoblin.id);
+        // Remove the goblin
+        setGameState((prev) => ({
+          ...prev,
+          goblins: prev.goblins.filter((g) => g.id !== adjacentGoblin.id),
+        }));
+        // Play attack sound
+        playAttackSound().catch(console.warn);
+        // Play haptic feedback
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(console.warn);
+        // Reset tap time to prevent triple tap from triggering
+        lastTapTimeRef.current = 0;
+        return;
+      }
+    }
+    
+    // Update last tap time
+    lastTapTimeRef.current = now;
+  }, [gameState]);
+
+  // Tap gesture for double tap (backstab)
+  const tapGesture = useMemo(
+    () =>
+      Gesture.Tap()
+        .numberOfTaps(1)
+        .onEnd(() => {
+          runOnJS(handleDoubleTap)();
+        }),
+    [handleDoubleTap]
+  );
+
   // Combined gesture handler that detects number of fingers
   const panGesture = useMemo(
     () =>
@@ -332,6 +525,12 @@ export default function GameScreen() {
     [handleGestureStart, handleGestureEnd]
   );
 
+  // Combine gestures
+  const combinedGesture = useMemo(
+    () => Gesture.Race(panGesture, tapGesture),
+    [panGesture, tapGesture]
+  );
+
   // Status message for debugging (optional - can be removed for true blind experience)
   const getStatusMessage = () => {
     if (gameState.status === 'dead') {
@@ -350,21 +549,25 @@ export default function GameScreen() {
     const isStart = gameState.startPosition.x === x && gameState.startPosition.y === y;
     const isEnd = gameState.endPosition.x === x && gameState.endPosition.y === y;
     const hasTrap = isTrap({ x, y }, gameState.trapPositions);
+    const hasGoblin = gameState.goblins.some((goblin) => goblin.position.x === x && goblin.position.y === y);
 
     let cellColor = '#1a1a1a'; // Dark gray for walls
     if (isPath) {
       cellColor = '#ffffff'; // White for paths
     }
-    if (hasTrap && !isPlayer) {
+    if (hasTrap && !isPlayer && !hasGoblin) {
       cellColor = '#800080'; // Purple for traps
+    }
+    if (hasGoblin && !isPlayer) {
+      cellColor = '#006400'; // Dark green for goblins
     }
     if (isPlayer) {
       cellColor = '#00ff00'; // Green for player
     }
-    if (isStart && !isPlayer && !hasTrap) {
+    if (isStart && !isPlayer && !hasTrap && !hasGoblin) {
       cellColor = '#0000ff'; // Blue for start
     }
-    if (isEnd && !isPlayer && !hasTrap) {
+    if (isEnd && !isPlayer && !hasTrap && !hasGoblin) {
       cellColor = '#ff0000'; // Red for end
     }
 
@@ -385,7 +588,7 @@ export default function GameScreen() {
 
   return (
     <View style={styles.container}>
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={combinedGesture}>
         <View style={styles.gameArea}>
           {/* Visual Grid */}
           <View style={styles.gridContainer}>

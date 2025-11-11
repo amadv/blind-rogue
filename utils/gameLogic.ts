@@ -1,5 +1,12 @@
 export type Grid = number[][];
 export type Position = { x: number; y: number };
+export type Direction = 'up' | 'down' | 'left' | 'right';
+
+export interface Goblin {
+  id: number;
+  position: Position;
+  direction: Direction;
+}
 
 export interface GameState {
   grid: Grid;
@@ -7,6 +14,7 @@ export interface GameState {
   startPosition: Position;
   endPosition: Position;
   trapPositions: Position[];
+  goblins: Goblin[];
   status: 'playing' | 'dead' | 'won';
 }
 
@@ -300,18 +308,144 @@ export function getAdjacentPosition(
 }
 
 /**
+ * Generate random goblin positions on path tiles
+ * Returns 0, 1, or 2 goblins
+ */
+export function generateGoblins(
+  grid: Grid,
+  start: Position,
+  end: Position,
+  playerPos: Position
+): Goblin[] {
+  const goblins: Goblin[] = [];
+  const pathPositions: Position[] = [];
+  let nextGoblinId = 1;
+
+  // Collect all path positions (excluding start, end, and player position)
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      if (grid[y][x] === 1) {
+        const pos = { x, y };
+        if (
+          !(pos.x === start.x && pos.y === start.y) &&
+          !(pos.x === end.x && pos.y === end.y) &&
+          !(pos.x === playerPos.x && pos.y === playerPos.y)
+        ) {
+          pathPositions.push(pos);
+        }
+      }
+    }
+  }
+
+  // Randomly decide how many goblins (0, 1, or 2)
+  const numGoblins = Math.floor(Math.random() * 3);
+  const shuffled = [...pathPositions].sort(() => Math.random() - 0.5);
+  const directions: Direction[] = ['up', 'down', 'left', 'right'];
+
+  for (let i = 0; i < numGoblins && i < shuffled.length; i++) {
+    const randomDirection = directions[Math.floor(Math.random() * directions.length)];
+    goblins.push({
+      id: nextGoblinId++,
+      position: shuffled[i],
+      direction: randomDirection,
+    });
+  }
+
+  return goblins;
+}
+
+/**
+ * Move a goblin one step in its current direction
+ * If blocked, pick a new random direction
+ * Goblins can walk through the player position (they don't stop on it)
+ */
+export function moveGoblin(
+  goblin: Goblin,
+  grid: Grid,
+  playerPos: Position
+): Goblin {
+  const nextPos = getAdjacentPosition(goblin.position, goblin.direction);
+  
+  // Check if goblin can continue in current direction
+  // Allow goblin to move through player position (isPath check only)
+  if (isPath(grid, nextPos)) {
+    // Can move forward (even if player is there, goblin walks through)
+    return {
+      ...goblin,
+      position: nextPos,
+    };
+  }
+
+  // Blocked - pick a new random direction
+  const directions: Direction[] = ['up', 'down', 'left', 'right'];
+  const validDirections = directions.filter((dir) => {
+    const testPos = getAdjacentPosition(goblin.position, dir);
+    return isPath(grid, testPos);
+    // Note: Goblins can walk through player, so we don't check for player position
+  });
+
+  if (validDirections.length === 0) {
+    // No valid moves, stay in place
+    return goblin;
+  }
+
+  const newDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
+  const newPos = getAdjacentPosition(goblin.position, newDirection);
+  
+  return {
+    ...goblin,
+    position: newPos,
+    direction: newDirection,
+  };
+}
+
+/**
+ * Check if a goblin is moving towards the player
+ * Returns true if goblin is one step away and moving in the direction of the player
+ */
+export function isGoblinApproachingPlayer(
+  goblin: Goblin,
+  playerPos: Position
+): boolean {
+  const nextPos = getAdjacentPosition(goblin.position, goblin.direction);
+  return nextPos.x === playerPos.x && nextPos.y === playerPos.y;
+}
+
+/**
+ * Check if a goblin is one block away from player (for backstab)
+ */
+export function isGoblinAdjacentToPlayer(
+  goblin: Goblin,
+  playerPos: Position
+): boolean {
+  const dx = Math.abs(goblin.position.x - playerPos.x);
+  const dy = Math.abs(goblin.position.y - playerPos.y);
+  return (dx === 1 && dy === 0) || (dx === 0 && dy === 1);
+}
+
+/**
+ * Calculate Manhattan distance between two positions
+ */
+export function getDistance(pos1: Position, pos2: Position): number {
+  return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
+}
+
+/**
  * Initialize a new game state
  */
 export function initializeGame(): GameState {
   const { grid, start, end } = generateGrid();
   const trapPositions = generateTraps(grid, start, end, 2);
+  const playerPos = { ...start };
+  const goblins = generateGoblins(grid, start, end, playerPos);
 
   return {
     grid,
-    playerPosition: { ...start },
+    playerPosition: playerPos,
     startPosition: start,
     endPosition: end,
     trapPositions,
+    goblins,
     status: 'playing',
   };
 }

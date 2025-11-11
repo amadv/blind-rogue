@@ -4,6 +4,8 @@ import { Audio } from 'expo-av';
 const windSound = require('@/assets/audio/wind.mp3');
 const caveSound = require('@/assets/audio/cave.mp3');
 const stepSound = require('@/assets/audio/step.mp3');
+const goblinSound = require('@/assets/audio/goblin.mp3');
+const attackSound = require('@/assets/audio/attack.mp3');
 
 let audioContext: AudioContext | null = null;
 let audioModeSet = false;
@@ -13,6 +15,8 @@ const soundCache: { [key: string]: Audio.Sound | null } = {
   wind: null,
   cave: null,
   step: null,
+  goblin: null,
+  attack: null,
 };
 
 /**
@@ -350,6 +354,30 @@ export async function playTickSound(): Promise<void> {
     await generateTone(800, 0.1, 'square', 0.4);
   } catch (error) {
     console.warn('playTickSound error:', error);
+  }
+}
+
+/**
+ * Play goblin sound using goblin.mp3
+ * Volume should be based on distance (0.0 to 1.0)
+ * Distance: 2 blocks = quiet (0.2), 1 block = medium (0.6), 0 blocks = loud (1.0)
+ */
+export async function playGoblinSound(volume: number = 0.5): Promise<void> {
+  try {
+    await playAudioFile('goblin', goblinSound, volume);
+  } catch (error) {
+    console.warn('playGoblinSound error:', error);
+  }
+}
+
+/**
+ * Play attack sound (for double tap backstab)
+ */
+export async function playAttackSound(): Promise<void> {
+  try {
+    await playAudioFile('attack', attackSound, 0.8);
+  } catch (error) {
+    console.warn('playAttackSound error:', error);
   }
 }
 
