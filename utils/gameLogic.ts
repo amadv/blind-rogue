@@ -6,6 +6,7 @@ export interface GameState {
   playerPosition: Position;
   startPosition: Position;
   endPosition: Position;
+  trapPositions: Position[];
   status: 'playing' | 'dead' | 'won';
 }
 
@@ -208,6 +209,56 @@ export function generateGrid(): { grid: Grid; start: Position; end: Position } {
 }
 
 /**
+ * Generate random trap positions on path tiles
+ * Traps are placed on path tiles, but not on start or end positions
+ */
+export function generateTraps(
+  grid: Grid,
+  start: Position,
+  end: Position,
+  numTraps: number = 2
+): Position[] {
+  const traps: Position[] = [];
+  const pathPositions: Position[] = [];
+
+  // Collect all path positions (excluding start and end)
+  for (let y = 0; y < GRID_SIZE; y++) {
+    for (let x = 0; x < GRID_SIZE; x++) {
+      if (grid[y][x] === 1) {
+        // It's a path tile
+        const pos = { x, y };
+        // Don't place traps on start or end
+        if (
+          !(pos.x === start.x && pos.y === start.y) &&
+          !(pos.x === end.x && pos.y === end.y)
+        ) {
+          pathPositions.push(pos);
+        }
+      }
+    }
+  }
+
+  // Randomly select trap positions
+  const numTrapsToPlace = Math.min(numTraps, pathPositions.length);
+  const shuffled = [...pathPositions].sort(() => Math.random() - 0.5);
+  
+  for (let i = 0; i < numTrapsToPlace; i++) {
+    traps.push(shuffled[i]);
+  }
+
+  return traps;
+}
+
+/**
+ * Check if a position has a trap
+ */
+export function isTrap(pos: Position, trapPositions: Position[]): boolean {
+  return trapPositions.some(
+    (trap) => trap.x === pos.x && trap.y === pos.y
+  );
+}
+
+/**
  * Check if a position is valid (within grid bounds)
  */
 export function isValidPosition(pos: Position): boolean {
@@ -253,12 +304,14 @@ export function getAdjacentPosition(
  */
 export function initializeGame(): GameState {
   const { grid, start, end } = generateGrid();
+  const trapPositions = generateTraps(grid, start, end, 2);
 
   return {
     grid,
     playerPosition: { ...start },
     startPosition: start,
     endPosition: end,
+    trapPositions,
     status: 'playing',
   };
 }

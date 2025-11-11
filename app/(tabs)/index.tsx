@@ -3,6 +3,7 @@ import {
   playDeathSound,
   playHearSound,
   playStepSound,
+  playTickSound,
   playWindSound,
   playWinSound,
 } from '@/utils/audioSystem';
@@ -11,6 +12,7 @@ import {
   getAdjacentPosition,
   initializeGame,
   isPath,
+  isTrap,
   isValidPosition,
   type GameState
 } from '@/utils/gameLogic';
@@ -44,15 +46,29 @@ function getDirection(translationX: number, translationY: number): Direction | n
 export default function GameScreen() {
   const [gameState, setGameState] = useState<GameState>(initializeGame());
   const [isHearing, setIsHearing] = useState(false);
+  const [trapCountdown, setTrapCountdown] = useState<number | null>(null);
+  const trapCountdownRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset game when player dies or wins (creates new level)
   const resetGame = useCallback(() => {
+    // Clear any active trap countdown
+    if (trapCountdownRef.current) {
+      clearTimeout(trapCountdownRef.current);
+      trapCountdownRef.current = null;
+    }
+    setTrapCountdown(null);
     setGameState(initializeGame());
     setIsHearing(false);
   }, []);
 
   // Restart current level (same grid, reset player to start)
   const restartCurrentLevel = useCallback(() => {
+    // Clear any active trap countdown
+    if (trapCountdownRef.current) {
+      clearTimeout(trapCountdownRef.current);
+      trapCountdownRef.current = null;
+    }
+    setTrapCountdown(null);
     setGameState((prev) => ({
       ...prev,
       playerPosition: { ...prev.startPosition },
@@ -158,14 +174,64 @@ export default function GameScreen() {
         await playStepSound().catch(console.warn);
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(console.warn);
 
+        // Clear any existing trap countdown
+        if (trapCountdownRef.current) {
+          clearTimeout(trapCountdownRef.current);
+          trapCountdownRef.current = null;
+        }
+        setTrapCountdown(null);
+
         const updatedState: GameState = {
           ...gameState,
           playerPosition: newPos,
         };
 
+        // Check if player stepped on a trap
+        if (isTrap(newPos, gameState.trapPositions)) {
+          console.log('Trap activated! Starting countdown...');
+          setTrapCountdown(5);
+          
+          // Play 5 ticks over 5 seconds
+          for (let i = 0; i < 5; i++) {
+            setTimeout(async () => {
+              await playTickSound().catch(console.warn);
+              setTrapCountdown((prev) => {
+                if (prev !== null && prev > 1) {
+                  return prev - 1;
+                }
+                return prev;
+              });
+            }, i * 1000);
+          }
+
+          // Kill player after 5 seconds
+          trapCountdownRef.current = setTimeout(() => {
+            console.log('Trap triggered! Player dies...');
+            setGameState((prev) => ({ ...prev, status: 'dead' }));
+            setTrapCountdown(null);
+            trapCountdownRef.current = null;
+            
+            // Play death sound and restart
+            playDeathSound()
+              .catch(console.warn)
+              .then(() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
+                setTimeout(() => {
+                  restartCurrentLevel();
+                }, 2000);
+              });
+          }, 5000);
+        }
+
         // Check win condition
         if (checkWin(newPos, gameState.endPosition)) {
           console.log('Win condition met!');
+          // Clear trap countdown if active
+          if (trapCountdownRef.current) {
+            clearTimeout(trapCountdownRef.current);
+            trapCountdownRef.current = null;
+          }
+          setTrapCountdown(null);
           updatedState.status = 'won';
           await playWinSound().catch(console.warn);
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(console.warn);
@@ -283,18 +349,22 @@ export default function GameScreen() {
     const isPlayer = gameState.playerPosition.x === x && gameState.playerPosition.y === y;
     const isStart = gameState.startPosition.x === x && gameState.startPosition.y === y;
     const isEnd = gameState.endPosition.x === x && gameState.endPosition.y === y;
+    const hasTrap = isTrap({ x, y }, gameState.trapPositions);
 
     let cellColor = '#1a1a1a'; // Dark gray for walls
     if (isPath) {
       cellColor = '#ffffff'; // White for paths
     }
+    if (hasTrap && !isPlayer) {
+      cellColor = '#800080'; // Purple for traps
+    }
     if (isPlayer) {
       cellColor = '#00ff00'; // Green for player
     }
-    if (isStart && !isPlayer) {
+    if (isStart && !isPlayer && !hasTrap) {
       cellColor = '#0000ff'; // Blue for start
     }
-    if (isEnd && !isPlayer) {
+    if (isEnd && !isPlayer && !hasTrap) {
       cellColor = '#ff0000'; // Red for end
     }
 

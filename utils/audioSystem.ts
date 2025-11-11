@@ -340,3 +340,16 @@ export async function playWinSound(): Promise<void> {
   }
 }
 
+/**
+ * Play tick sound (for trap countdown)
+ */
+export async function playTickSound(): Promise<void> {
+  try {
+    await initAudio();
+    // Short, sharp tick sound
+    await generateTone(800, 0.1, 'square', 0.4);
+  } catch (error) {
+    console.warn('playTickSound error:', error);
+  }
+}
+
