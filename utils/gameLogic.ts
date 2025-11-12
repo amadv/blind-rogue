@@ -401,7 +401,7 @@ export function moveGoblin(
 
 /**
  * Check if a goblin is moving towards the player
- * Returns true if goblin is one step away and moving in the direction of the player
+ * Returns true if goblin's next position is the player's current position
  */
 export function isGoblinApproachingPlayer(
   goblin: Goblin,
@@ -409,6 +409,27 @@ export function isGoblinApproachingPlayer(
 ): boolean {
   const nextPos = getAdjacentPosition(goblin.position, goblin.direction);
   return nextPos.x === playerPos.x && nextPos.y === playerPos.y;
+}
+
+/**
+ * Check if a goblin is walking away from the player
+ * Returns true if goblin is one space away and its next position moves it further from the player
+ */
+export function isGoblinWalkingAway(
+  goblin: Goblin,
+  playerPos: Position
+): boolean {
+  const distance = getDistance(goblin.position, playerPos);
+  if (distance !== 1) {
+    return false;
+  }
+  
+  const nextPos = getAdjacentPosition(goblin.position, goblin.direction);
+  const currentDistance = getDistance(goblin.position, playerPos);
+  const nextDistance = getDistance(nextPos, playerPos);
+  
+  // Walking away means the next position is further from the player
+  return nextDistance > currentDistance;
 }
 
 /**

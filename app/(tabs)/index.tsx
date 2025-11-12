@@ -14,7 +14,8 @@ import {
   getAdjacentPosition,
   getDistance,
   initializeGame,
-  isGoblinAdjacentToPlayer,
+  isGoblinApproachingPlayer,
+  isGoblinWalkingAway,
   isPath,
   isTrap,
   isValidPosition,
@@ -285,22 +286,21 @@ export default function GameScreen() {
           return;
         }
 
-        // Check if a goblin is one space away and moving towards the player
+        // Check if a goblin is one space away OR on the same tile and moving towards the player
         // If the player moves when a goblin is approaching, the player dies
         const approachingGoblin = gameState.goblins.find((goblin) => {
-          // Check if goblin is one space away from player
           const distance = getDistance(goblin.position, gameState.playerPosition);
-          if (distance !== 1) {
+          // Check if goblin is one space away OR on the same tile (distance 0 or 1)
+          if (distance !== 0 && distance !== 1) {
             return false;
           }
           
           // Check if goblin is moving towards the player (its next position is the player's current position)
-          const goblinNextPos = getAdjacentPosition(goblin.position, goblin.direction);
-          return goblinNextPos.x === gameState.playerPosition.x && goblinNextPos.y === gameState.playerPosition.y;
+          return isGoblinApproachingPlayer(goblin, gameState.playerPosition);
         });
 
         if (approachingGoblin) {
-          // Goblin is one space away and moving towards player - player dies if they move
+          // Goblin is approaching (one space away or same tile) and moving towards player - player dies if they move
           console.log('Goblin approaching! Player dies...');
           setGameState((prev) => ({ ...prev, status: 'dead' }));
           
@@ -461,17 +461,51 @@ export default function GameScreen() {
     
     // Check if this is a double tap (within 300ms, but not the first tap)
     if (timeSinceLastTap > 0 && timeSinceLastTap < 300) {
-      // Find goblin adjacent to player
-      const adjacentGoblin = gameState.goblins.find((goblin) =>
-        isGoblinAdjacentToPlayer(goblin, gameState.playerPosition)
-      );
+      // First check: If goblin is approaching (one space away OR same tile) and moving towards player
+      // Attempting to attack an approaching goblin kills the player
+      const approachingGoblin = gameState.goblins.find((goblin) => {
+        const distance = getDistance(goblin.position, gameState.playerPosition);
+        // Check if goblin is one space away OR on the same tile (distance 0 or 1)
+        if (distance !== 0 && distance !== 1) {
+          return false;
+        }
+        // Check if goblin is moving towards the player
+        return isGoblinApproachingPlayer(goblin, gameState.playerPosition);
+      });
 
-      if (adjacentGoblin) {
-        console.log('Backstab! Killing goblin:', adjacentGoblin.id);
+      if (approachingGoblin) {
+        // Player tried to attack an approaching goblin - player dies
+        console.log('Attacked approaching goblin! Player dies...');
+        setGameState((prev) => ({ ...prev, status: 'dead' }));
+        
+        playDeathSound().catch(console.warn);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
+        
+        setTimeout(() => {
+          console.log('Restarting current level...');
+          restartCurrentLevel();
+        }, 2000);
+        lastTapTimeRef.current = 0;
+        return;
+      }
+
+      // Second check: If goblin is one space away and walking AWAY from player
+      // This is the only safe time to backstab
+      const goblinWalkingAway = gameState.goblins.find((goblin) => {
+        const distance = getDistance(goblin.position, gameState.playerPosition);
+        if (distance !== 1) {
+          return false;
+        }
+        // Check if goblin is walking away from the player
+        return isGoblinWalkingAway(goblin, gameState.playerPosition);
+      });
+
+      if (goblinWalkingAway) {
+        console.log('Backstab! Killing goblin:', goblinWalkingAway.id);
         // Remove the goblin
         setGameState((prev) => ({
           ...prev,
-          goblins: prev.goblins.filter((g) => g.id !== adjacentGoblin.id),
+          goblins: prev.goblins.filter((g) => g.id !== goblinWalkingAway.id),
         }));
         // Play attack sound
         playAttackSound().catch(console.warn);
@@ -485,7 +519,7 @@ export default function GameScreen() {
     
     // Update last tap time
     lastTapTimeRef.current = now;
-  }, [gameState]);
+  }, [gameState, restartCurrentLevel]);
 
   // Tap gesture for double tap (backstab)
   const tapGesture = useMemo(
