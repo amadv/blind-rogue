@@ -565,18 +565,30 @@ export default function GameScreen() {
     [panGesture, tapGesture]
   );
 
-  // Status message for debugging (optional - can be removed for true blind experience)
-  const getStatusMessage = () => {
+  // Game log messages with dungeon vibes
+  const getGameLog = () => {
+    const messages: string[] = [];
+    
     if (gameState.status === 'dead') {
-      return 'You fell off the edge! Restarting level...';
+      messages.push('> YOU DIED');
+      messages.push('> RESTARTING...');
+    } else if (gameState.status === 'won') {
+      messages.push('> EXIT REACHED');
+      messages.push('> LEVEL CLEARED');
+    } else {
+      messages.push(`> POS [${gameState.playerPosition.x},${gameState.playerPosition.y}]`);
+      if (trapCountdown !== null) {
+        messages.push(`> TRAP: ${trapCountdown}s`);
+      }
+      if (gameState.goblins.length > 0) {
+        messages.push(`> GOBLINS: ${gameState.goblins.length}`);
+      }
     }
-    if (gameState.status === 'won') {
-      return 'You reached the end! Tap to play again.';
-    }
-    return `Position: (${gameState.playerPosition.x}, ${gameState.playerPosition.y})`;
+    
+    return messages;
   };
 
-  // Render grid cell
+  // Render grid cell as circle (weiqi board style)
   const renderCell = (x: number, y: number) => {
     const isPath = gameState.grid[y][x] === 1;
     const isPlayer = gameState.playerPosition.x === x && gameState.playerPosition.y === y;
@@ -585,38 +597,66 @@ export default function GameScreen() {
     const hasTrap = isTrap({ x, y }, gameState.trapPositions);
     const hasGoblin = gameState.goblins.some((goblin) => goblin.position.x === x && goblin.position.y === y);
 
-    let cellColor = '#1a1a1a'; // Dark gray for walls
+    // Mono black and white theme with shades of gray
+    let circleColor = '#000000'; // Black for walls (no circle shown)
+    let circleSize = 0; // No circle for walls
+    
     if (isPath) {
-      cellColor = '#ffffff'; // White for paths
+      circleColor = '#cccccc'; // Light gray for paths
+      circleSize = 10; // Base size for path circles
     }
-    if (hasTrap && !isPlayer && !hasGoblin) {
-      cellColor = '#800080'; // Purple for traps
-    }
-    if (hasGoblin && !isPlayer) {
-      cellColor = '#006400'; // Dark green for goblins
-    }
+    
+    // Player is a large white circle (most visible)
     if (isPlayer) {
-      cellColor = '#00ff00'; // Green for player
+      circleColor = '#ffffff';
+      circleSize = 16;
     }
+    
+    // Start position - white circle with border
     if (isStart && !isPlayer && !hasTrap && !hasGoblin) {
-      cellColor = '#0000ff'; // Blue for start
+      circleColor = '#ffffff';
+      circleSize = 12;
     }
+    
+    // End position - large white circle
     if (isEnd && !isPlayer && !hasTrap && !hasGoblin) {
-      cellColor = '#ff0000'; // Red for end
+      circleColor = '#ffffff';
+      circleSize = 18;
+    }
+    
+    // Trap - dark gray circle
+    if (hasTrap && !isPlayer && !hasGoblin) {
+      circleColor = '#666666';
+      circleSize = 8;
+    }
+    
+    // Goblin - medium gray circle
+    if (hasGoblin && !isPlayer) {
+      circleColor = '#999999';
+      circleSize = 10;
     }
 
     return (
       <View
         key={`${x}-${y}`}
-        style={[
-          styles.cell,
-          {
-            backgroundColor: cellColor,
-            borderColor: '#333333',
-            borderWidth: 1,
-          },
-        ]}
-      />
+        style={styles.cell}
+      >
+        {circleSize > 0 && (
+          <View
+            style={[
+              styles.circle,
+              {
+                width: circleSize,
+                height: circleSize,
+                borderRadius: circleSize / 2,
+                backgroundColor: circleColor,
+                borderWidth: isStart && !isPlayer && !hasTrap && !hasGoblin ? 2 : 0,
+                borderColor: '#000000',
+              },
+            ]}
+          />
+        )}
+      </View>
     );
   };
 
@@ -633,19 +673,24 @@ export default function GameScreen() {
             ))}
           </View>
 
+          {/* Game Log */}
+          <View style={styles.gameLog}>
+            {getGameLog().map((msg, idx) => (
+              <Text key={idx} style={styles.logText}>{msg}</Text>
+            ))}
+          </View>
+
           {/* Instructions overlay */}
           <View style={styles.instructions}>
             <Text style={styles.instructionText}>
-              One finger slide: Hear direction{'\n'}
-              Two finger slide: Move direction
+              [1] HEAR  [2] MOVE
             </Text>
-            <Text style={styles.statusText}>{getStatusMessage()}</Text>
           </View>
 
           {/* Restart button (accessible) */}
           {gameState.status === 'won' && (
             <Pressable style={styles.restartButton} onPress={resetGame}>
-              <Text style={styles.restartButtonText}>Play Again</Text>
+              <Text style={styles.restartButtonText}>[ CONTINUE ]</Text>
             </Pressable>
           )}
         </View>
@@ -667,48 +712,74 @@ const styles = StyleSheet.create({
   },
   gridContainer: {
     flexDirection: 'column',
-    borderWidth: 2,
-    borderColor: '#444444',
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#000000',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ffffff',
   },
   gridRow: {
     flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#666666',
   },
   cell: {
-    width: 30,
-    height: 30,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRightWidth: 1,
+    borderRightColor: '#666666',
+  },
+  circle: {
+    position: 'absolute',
+  },
+  gameLog: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    padding: 12,
+    minWidth: 200,
+  },
+  logText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    lineHeight: 16,
+    letterSpacing: 0.5,
   },
   instructions: {
     position: 'absolute',
-    top: 50,
+    bottom: 40,
     left: 20,
     right: 20,
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 10,
-    borderRadius: 8,
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    padding: 12,
   },
   instructionText: {
     color: '#ffffff',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  statusText: {
-    color: '#cccccc',
-    fontSize: 12,
+    fontSize: 11,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
     textAlign: 'center',
   },
   restartButton: {
     marginTop: 100,
     paddingHorizontal: 30,
     paddingVertical: 15,
-    backgroundColor: '#333333',
-    borderRadius: 8,
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#ffffff',
   },
   restartButtonText: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
   },
 });
