@@ -4,6 +4,7 @@ import {
   playDeathSound,
   playGoblinSound,
   playHearSound,
+  playStartSound,
   playStepSound,
   playTickSound,
   playWindSound,
@@ -145,6 +146,8 @@ export default function GameScreen() {
     const newState = initializeGame();
     setGameState(newState);
     setIsHearing(false);
+    // Play start sound when starting a new level
+    playStartSound().catch(console.warn);
     // Start goblin movement timer
     startGoblinMovement(newState);
     // Start goblin audio system
@@ -182,6 +185,8 @@ export default function GameScreen() {
 
   // Initialize goblin movement and audio on mount
   React.useEffect(() => {
+    // Play start sound when first loading the game
+    playStartSound().catch(console.warn);
     startGoblinMovement(gameState);
     startGoblinAudio();
     return () => {

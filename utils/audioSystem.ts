@@ -6,6 +6,7 @@ const caveSound = require('@/assets/audio/cave.mp3');
 const stepSound = require('@/assets/audio/step.mp3');
 const goblinSound = require('@/assets/audio/goblin.mp3');
 const attackSound = require('@/assets/audio/attack.mp3');
+const startSound = require('@/assets/audio/start.wav');
 
 let audioContext: AudioContext | null = null;
 let audioModeSet = false;
@@ -17,6 +18,7 @@ const soundCache: { [key: string]: Audio.Sound | null } = {
   step: null,
   goblin: null,
   attack: null,
+  start: null,
 };
 
 /**
@@ -378,6 +380,17 @@ export async function playAttackSound(): Promise<void> {
     await playAudioFile('attack', attackSound, 0.8);
   } catch (error) {
     console.warn('playAttackSound error:', error);
+  }
+}
+
+/**
+ * Play start sound (when starting a level)
+ */
+export async function playStartSound(): Promise<void> {
+  try {
+    await playAudioFile('start', startSound, 0.8);
+  } catch (error) {
+    console.warn('playStartSound error:', error);
   }
 }
 
