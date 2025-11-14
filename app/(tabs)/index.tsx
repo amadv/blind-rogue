@@ -216,6 +216,8 @@ export default function GameScreen() {
       return newState;
     });
     setIsHearing(false);
+    // Play start sound to indicate respawn at beginning
+    playStartSound().catch(console.warn);
     // Restart goblin audio system
     if (goblinAudioIntervalRef.current) {
       clearInterval(goblinAudioIntervalRef.current);
