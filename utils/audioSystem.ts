@@ -4,7 +4,7 @@ import { Audio } from 'expo-av';
 const windSound = require('@/assets/audio/wind.mp3');
 const caveSound = require('@/assets/audio/cave.mp3');
 const stepSound = require('@/assets/audio/step.mp3');
-const goblinSound = require('@/assets/audio/goblin.mp3');
+const goblinSound = require('@/assets/audio/goblin.wav');
 const attackSound = require('@/assets/audio/attack.mp3');
 const startSound = require('@/assets/audio/start.wav');
 const trapSound = require('@/assets/audio/trap.wav');
