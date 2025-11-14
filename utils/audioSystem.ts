@@ -8,6 +8,7 @@ const goblinSound = require('@/assets/audio/goblin.mp3');
 const attackSound = require('@/assets/audio/attack.mp3');
 const startSound = require('@/assets/audio/start.wav');
 const trapSound = require('@/assets/audio/trap.wav');
+const fallingSound = require('@/assets/audio/falling.mp3');
 
 let audioContext: AudioContext | null = null;
 let audioModeSet = false;
@@ -21,6 +22,7 @@ const soundCache: { [key: string]: Audio.Sound | null } = {
   attack: null,
   start: null,
   trap: null,
+  falling: null,
 };
 
 /**
@@ -296,35 +298,9 @@ export async function playStepSound(): Promise<void> {
  */
 export async function playDeathSound(): Promise<void> {
   try {
-    await initAudio();
-    // Dramatic descending tone
-    const startFreq = 300;
-    const endFreq = 100;
-    const duration = 0.5;
-    
-    if (typeof window !== 'undefined' && window.AudioContext) {
-      const ctx = audioContext || new AudioContext();
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.type = 'sawtooth';
-      oscillator.frequency.setValueAtTime(startFreq, ctx.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(endFreq, ctx.currentTime + duration);
-      
-      gainNode.gain.setValueAtTime(0.4, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
-
-      oscillator.onended = () => {};
-
-      oscillator.start(ctx.currentTime);
-      oscillator.stop(ctx.currentTime + duration);
-    } else {
-      // Fallback
-      await generateTone(startFreq, duration, 'sawtooth', 0.4);
-    }
+    console.log('[Audio] Playing falling/death sound');
+    await playAudioFile('falling', fallingSound, 0.8);
+    console.log('[Audio] Falling sound completed');
   } catch (error) {
     console.warn('playDeathSound error:', error);
   }
