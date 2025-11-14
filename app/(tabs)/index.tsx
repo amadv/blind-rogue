@@ -5,7 +5,6 @@ import {
   playHearSound,
   playStartSound,
   playStepSound,
-  playTickSound,
   playTrapSound,
   playWindSound,
   playWinSound,
@@ -398,7 +397,7 @@ export default function GameScreen() {
           // Play 5 ticks over 5 seconds
           for (let i = 0; i < 5; i++) {
             setTimeout(async () => {
-              await playTickSound().catch(console.warn);
+              // await playTickSound().catch(console.warn);
               setTrapCountdown((prev) => {
                 if (prev !== null && prev > 1) {
                   return prev - 1;
