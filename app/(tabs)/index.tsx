@@ -608,7 +608,7 @@ export default function GameScreen() {
     
     // Player is a large white circle (most visible)
     if (isPlayer) {
-      circleColor = '#ffffff';
+      circleColor = '#00ff00';
       circleSize = 16;
     }
     
@@ -632,7 +632,7 @@ export default function GameScreen() {
     
     // Goblin - medium gray circle
     if (hasGoblin && !isPlayer) {
-      circleColor = '#999999';
+      circleColor = '#ff0000';
       circleSize = 10;
     }
 
@@ -683,7 +683,10 @@ export default function GameScreen() {
           {/* Instructions overlay */}
           <View style={styles.instructions}>
             <Text style={styles.instructionText}>
-              [1] HEAR  [2] MOVE
+              [1 FINGER] HEAR  [2 FINGERS] MOVE
+            </Text>
+            <Text style={styles.instructionText}>
+              [DOUBLE TAP] BACKSTAB
             </Text>
           </View>
 
