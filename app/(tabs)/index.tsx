@@ -7,8 +7,10 @@ import {
   playStartSound,
   playStepSound,
   playTickSound,
+  playTrapSound,
   playWindSound,
   playWinSound,
+  stopTrapSound,
 } from '@/utils/audioSystem';
 import {
   checkWin,
@@ -132,6 +134,8 @@ export default function GameScreen() {
       clearTimeout(trapCountdownRef.current);
       trapCountdownRef.current = null;
     }
+    // Stop trap sound if playing
+    stopTrapSound().catch(console.warn);
     // Clear goblin movement interval
     if (goblinMovementIntervalRef.current) {
       clearInterval(goblinMovementIntervalRef.current);
@@ -161,6 +165,8 @@ export default function GameScreen() {
       clearTimeout(trapCountdownRef.current);
       trapCountdownRef.current = null;
     }
+    // Stop trap sound if playing
+    stopTrapSound().catch(console.warn);
     setTrapCountdown(null);
     setGameState((prev) => {
       const newState = {
@@ -324,6 +330,16 @@ export default function GameScreen() {
         await playStepSound().catch(console.warn);
         await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(console.warn);
 
+        // Check if player was on a trap and is now moving off it
+        const wasOnTrap = isTrap(gameState.playerPosition, gameState.trapPositions);
+        const isOnTrap = isTrap(newPos, gameState.trapPositions);
+        
+        // Stop trap sound if moving off trap (check both position and countdown state)
+        if ((wasOnTrap || trapCountdown !== null) && !isOnTrap) {
+          console.log('Moving off trap, stopping trap sound...');
+          await stopTrapSound().catch(console.warn);
+        }
+
         // Clear any existing trap countdown
         if (trapCountdownRef.current) {
           clearTimeout(trapCountdownRef.current);
@@ -337,9 +353,11 @@ export default function GameScreen() {
         };
 
         // Check if player stepped on a trap
-        if (isTrap(newPos, gameState.trapPositions)) {
+        if (isOnTrap) {
           console.log('Trap activated! Starting countdown...');
-          setTrapCountdown(5);
+          
+          // Play trap sound (looping)
+          await playTrapSound().catch(console.warn);
           
           // Play 5 ticks over 5 seconds
           for (let i = 0; i < 5; i++) {
@@ -361,8 +379,11 @@ export default function GameScreen() {
             setTrapCountdown(null);
             trapCountdownRef.current = null;
             
-            // Play death sound and restart
-            playDeathSound()
+            // Stop trap sound
+            stopTrapSound().catch(console.warn);
+            
+            // Play attack sound (indicating death from trap) and restart
+            playAttackSound()
               .catch(console.warn)
               .then(() => {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
@@ -381,6 +402,8 @@ export default function GameScreen() {
             clearTimeout(trapCountdownRef.current);
             trapCountdownRef.current = null;
           }
+          // Stop trap sound if playing
+          await stopTrapSound().catch(console.warn);
           setTrapCountdown(null);
           updatedState.status = 'won';
           await playWinSound().catch(console.warn);

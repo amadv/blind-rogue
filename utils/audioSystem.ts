@@ -7,6 +7,7 @@ const stepSound = require('@/assets/audio/step.mp3');
 const goblinSound = require('@/assets/audio/goblin.mp3');
 const attackSound = require('@/assets/audio/attack.mp3');
 const startSound = require('@/assets/audio/start.wav');
+const trapSound = require('@/assets/audio/trap.wav');
 
 let audioContext: AudioContext | null = null;
 let audioModeSet = false;
@@ -19,6 +20,7 @@ const soundCache: { [key: string]: Audio.Sound | null } = {
   goblin: null,
   attack: null,
   start: null,
+  trap: null,
 };
 
 /**
@@ -391,6 +393,66 @@ export async function playStartSound(): Promise<void> {
     await playAudioFile('start', startSound, 0.8);
   } catch (error) {
     console.warn('playStartSound error:', error);
+  }
+}
+
+/**
+ * Play trap sound (looping while player is on trap)
+ */
+export async function playTrapSound(): Promise<void> {
+  try {
+    await initAudio();
+    
+    let sound = soundCache.trap;
+    
+    // Load sound if not cached
+    if (!sound) {
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        trapSound,
+        { shouldPlay: false, volume: 0.7, isLooping: true }
+      );
+      sound = newSound;
+      soundCache.trap = sound;
+    } else {
+      // Set looping if already cached
+      await sound.setIsLoopingAsync(true);
+    }
+    
+    // Reset position and play
+    await sound.setPositionAsync(0);
+    await sound.setVolumeAsync(0.7);
+    await sound.playAsync();
+    console.log('[Audio] Trap sound started (looping)');
+  } catch (error) {
+    console.warn('playTrapSound error:', error);
+  }
+}
+
+/**
+ * Stop trap sound (when player moves off trap)
+ */
+export async function stopTrapSound(): Promise<void> {
+  try {
+    const sound = soundCache.trap;
+    if (sound) {
+      try {
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          // Stop the sound regardless of playing state to ensure it stops
+          await sound.stopAsync();
+          // Reset position for next time
+          await sound.setPositionAsync(0).catch(() => {});
+          console.log('[Audio] Trap sound stopped');
+        }
+      } catch (statusError) {
+        // If status check fails, try to stop anyway
+        console.warn('Status check failed, attempting to stop sound anyway:', statusError);
+        await sound.stopAsync().catch(() => {});
+        await sound.setPositionAsync(0).catch(() => {});
+      }
+    }
+  } catch (error) {
+    console.warn('stopTrapSound error:', error);
   }
 }
 
