@@ -25,6 +25,9 @@ const soundCache: { [key: string]: Audio.Sound | null } = {
   falling: null,
 };
 
+// Goblin sound instances - one per goblin ID
+const goblinSoundInstances: Map<number, Audio.Sound> = new Map();
+
 /**
  * Initialize audio context (for web) or ensure audio is ready
  */
@@ -338,7 +341,110 @@ export async function playTickSound(): Promise<void> {
 }
 
 /**
- * Play goblin sound using goblin.mp3
+ * Start or update goblin sound for a specific goblin
+ * Creates a looping sound that fades based on distance
+ * @param goblinId - Unique ID of the goblin
+ * @param volume - Volume based on distance (0.0 to 1.0)
+ */
+export async function startGoblinSound(goblinId: number, volume: number): Promise<void> {
+  try {
+    await initAudio();
+    
+    let sound = goblinSoundInstances.get(goblinId);
+    
+    // Create new sound instance if it doesn't exist
+    if (!sound) {
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        goblinSound,
+        { shouldPlay: false, volume, isLooping: true }
+      );
+      sound = newSound;
+      goblinSoundInstances.set(goblinId, sound);
+      
+      // Start playing
+      await sound.setPositionAsync(0);
+      await sound.playAsync();
+      console.log(`[Audio] Goblin ${goblinId} sound started (looping)`);
+    } else {
+      // Check if sound is still playing, restart if needed
+      try {
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          // Ensure looping is enabled
+          if (!status.isLooping) {
+            await sound.setIsLoopingAsync(true);
+          }
+          
+          // If sound stopped playing, restart it
+          if (!status.isPlaying) {
+            await sound.setPositionAsync(0);
+            await sound.playAsync();
+            console.log(`[Audio] Goblin ${goblinId} sound restarted`);
+          }
+          
+          // Update volume smoothly
+          await sound.setVolumeAsync(volume);
+        }
+      } catch (statusError) {
+        // If status check fails, try to restart the sound
+        console.warn(`Status check failed for goblin ${goblinId}, restarting sound:`, statusError);
+        try {
+          await sound.setIsLoopingAsync(true);
+          await sound.setPositionAsync(0);
+          await sound.setVolumeAsync(volume);
+          await sound.playAsync();
+        } catch (restartError) {
+          console.warn(`Failed to restart goblin ${goblinId} sound:`, restartError);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn(`startGoblinSound error for goblin ${goblinId}:`, error);
+  }
+}
+
+/**
+ * Stop goblin sound for a specific goblin
+ * @param goblinId - Unique ID of the goblin
+ */
+export async function stopGoblinSound(goblinId: number): Promise<void> {
+  try {
+    const sound = goblinSoundInstances.get(goblinId);
+    if (sound) {
+      try {
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          await sound.stopAsync();
+          await sound.setPositionAsync(0).catch(() => {});
+          console.log(`[Audio] Goblin ${goblinId} sound stopped`);
+        }
+      } catch (statusError) {
+        console.warn(`Status check failed for goblin ${goblinId}, attempting to stop anyway:`, statusError);
+        await sound.stopAsync().catch(() => {});
+        await sound.setPositionAsync(0).catch(() => {});
+      }
+    }
+  } catch (error) {
+    console.warn(`stopGoblinSound error for goblin ${goblinId}:`, error);
+  }
+}
+
+/**
+ * Stop all goblin sounds (cleanup)
+ */
+export async function stopAllGoblinSounds(): Promise<void> {
+  try {
+    const goblinIds = Array.from(goblinSoundInstances.keys());
+    await Promise.all(goblinIds.map(id => stopGoblinSound(id)));
+    goblinSoundInstances.clear();
+    console.log('[Audio] All goblin sounds stopped');
+  } catch (error) {
+    console.warn('stopAllGoblinSounds error:', error);
+  }
+}
+
+/**
+ * Play goblin sound using goblin.mp3 (legacy function - kept for compatibility)
  * Volume should be based on distance (0.0 to 1.0)
  * Distance: 2 blocks = quiet (0.2), 1 block = medium (0.6), 0 blocks = loud (1.0)
  */

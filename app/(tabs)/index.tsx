@@ -2,7 +2,6 @@ import {
   playAttackSound,
   playCaveSound,
   playDeathSound,
-  playGoblinSound,
   playHearSound,
   playStartSound,
   playStepSound,
@@ -10,7 +9,10 @@ import {
   playTrapSound,
   playWindSound,
   playWinSound,
-  stopTrapSound,
+  startGoblinSound,
+  stopAllGoblinSounds,
+  stopGoblinSound,
+  stopTrapSound
 } from '@/utils/audioSystem';
 import {
   checkWin,
@@ -61,6 +63,7 @@ export default function GameScreen() {
   const goblinAudioIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTapTimeRef = React.useRef<number>(0);
   const gameStateRef = React.useRef<GameState>(gameState);
+  const activeGoblinIdsRef = React.useRef<Set<number>>(new Set());
   
   // Keep gameStateRef in sync with gameState
   React.useEffect(() => {
@@ -91,40 +94,67 @@ export default function GameScreen() {
     }, 2000); // Move every 2 seconds
   }, []);
 
-  // Start goblin audio system (plays sounds based on distance)
+  // Start goblin audio system (continuously updates volumes based on distance)
   const startGoblinAudio = useCallback(() => {
     if (goblinAudioIntervalRef.current) {
       clearInterval(goblinAudioIntervalRef.current);
     }
     
+    // Clear active goblin IDs when restarting
+    activeGoblinIdsRef.current.clear();
+    
     goblinAudioIntervalRef.current = setInterval(() => {
       const currentState = gameStateRef.current;
+      const activeGoblinIds = activeGoblinIdsRef.current;
       
-      if (currentState.status !== 'playing' || currentState.goblins.length === 0) {
+      if (currentState.status !== 'playing') {
+        // Stop all goblin sounds if game is not playing
+        stopAllGoblinSounds().catch(console.warn);
+        activeGoblinIds.clear();
         return;
       }
 
-      // Check each goblin's distance and play sound if within 2 blocks
-      currentState.goblins.forEach((goblin) => {
-        const distance = getDistance(goblin.position, currentState.playerPosition);
-        
-        if (distance <= 2) {
-          // Calculate volume based on distance
-          // Distance 0 = volume 1.0, Distance 1 = volume 0.6, Distance 2 = volume 0.2
-          let volume = 1.0;
-          if (distance === 2) {
-            volume = 0.2;
-          } else if (distance === 1) {
-            volume = 0.6;
-          } else if (distance === 0) {
-            volume = 1.0;
-          }
-          
-          // Play goblin sound with calculated volume
-          playGoblinSound(volume).catch(console.warn);
+      // Update active goblin IDs
+      const currentGoblinIds = new Set(currentState.goblins.map(g => g.id));
+      
+      // Stop sounds for goblins that no longer exist
+      activeGoblinIds.forEach((id) => {
+        if (!currentGoblinIds.has(id)) {
+          stopGoblinSound(id).catch(console.warn);
+          activeGoblinIds.delete(id);
         }
       });
-    }, 1000); // Check and play sounds every 1 second
+
+      // Update sounds for each goblin based on PROXIMITY (distance only, not direction)
+      // Sound plays continuously as long as goblin is within range, regardless of movement direction
+      currentState.goblins.forEach((goblin) => {
+        activeGoblinIds.add(goblin.id);
+        const distance = getDistance(goblin.position, currentState.playerPosition);
+        
+        // Smooth volume calculation based on distance (proximity-based, not direction-based)
+        // Max audible distance: 3 blocks
+        // Volume fades smoothly: distance 0 = 1.0, distance 3 = 0.0
+        const maxDistance = 3;
+        let volume = 0;
+        
+        if (distance <= maxDistance) {
+          // Smooth fade: volume decreases linearly with distance
+          // At distance 0: volume = 1.0
+          // At distance 1: volume = 0.67
+          // At distance 2: volume = 0.33
+          // At distance 3: volume = 0.0
+          volume = Math.max(0, 1 - (distance / maxDistance));
+          
+          // Start or update the goblin sound with calculated volume
+          // This ensures sound plays continuously based on proximity, regardless of goblin's movement direction
+          startGoblinSound(goblin.id, volume).catch(console.warn);
+        } else {
+          // Goblin is too far away, stop its sound
+          stopGoblinSound(goblin.id).catch(console.warn);
+          activeGoblinIds.delete(goblin.id);
+        }
+      });
+    }, 100); // Update every 100ms for smooth fading
   }, []);
 
   // Reset game when player dies or wins (creates new level)
@@ -136,6 +166,8 @@ export default function GameScreen() {
     }
     // Stop trap sound if playing
     stopTrapSound().catch(console.warn);
+    // Stop all goblin sounds
+    stopAllGoblinSounds().catch(console.warn);
     // Clear goblin movement interval
     if (goblinMovementIntervalRef.current) {
       clearInterval(goblinMovementIntervalRef.current);
@@ -167,6 +199,8 @@ export default function GameScreen() {
     }
     // Stop trap sound if playing
     stopTrapSound().catch(console.warn);
+    // Stop all goblin sounds
+    stopAllGoblinSounds().catch(console.warn);
     setTrapCountdown(null);
     setGameState((prev) => {
       const newState = {
@@ -202,6 +236,8 @@ export default function GameScreen() {
       if (goblinAudioIntervalRef.current) {
         clearInterval(goblinAudioIntervalRef.current);
       }
+      // Clean up all goblin sounds on unmount
+      stopAllGoblinSounds().catch(console.warn);
     };
   }, []); // Only run on mount
 
@@ -530,6 +566,8 @@ export default function GameScreen() {
 
       if (goblinWalkingAway) {
         console.log('Backstab! Killing goblin:', goblinWalkingAway.id);
+        // Stop the goblin's sound before removing it
+        stopGoblinSound(goblinWalkingAway.id).catch(console.warn);
         // Remove the goblin
         setGameState((prev) => ({
           ...prev,
