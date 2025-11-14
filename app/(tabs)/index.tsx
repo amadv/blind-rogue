@@ -8,6 +8,7 @@ import {
   playTrapSound,
   playWindSound,
   playWinSound,
+  preloadTrapSound,
   startGoblinSound,
   stopAllGoblinSounds,
   stopGoblinSound,
@@ -226,6 +227,8 @@ export default function GameScreen() {
   React.useEffect(() => {
     // Play start sound when first loading the game
     playStartSound().catch(console.warn);
+    // Preload trap sound to avoid delay on first trap step
+    preloadTrapSound().catch(console.warn);
     startGoblinMovement(gameState);
     startGoblinAudio();
     return () => {

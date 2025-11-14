@@ -467,6 +467,27 @@ export async function playStartSound(): Promise<void> {
 }
 
 /**
+ * Preload trap sound (call this during initialization to avoid delay on first trap step)
+ */
+export async function preloadTrapSound(): Promise<void> {
+  try {
+    await initAudio();
+    
+    // Load sound if not cached
+    if (!soundCache.trap) {
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        trapSound,
+        { shouldPlay: false, volume: 0.7, isLooping: true }
+      );
+      soundCache.trap = newSound;
+      console.log('[Audio] Trap sound preloaded');
+    }
+  } catch (error) {
+    console.warn('preloadTrapSound error:', error);
+  }
+}
+
+/**
  * Play trap sound (looping while player is on trap)
  */
 export async function playTrapSound(): Promise<void> {
@@ -475,7 +496,7 @@ export async function playTrapSound(): Promise<void> {
     
     let sound = soundCache.trap;
     
-    // Load sound if not cached
+    // Load sound if not cached (shouldn't happen if preloaded, but keep as fallback)
     if (!sound) {
       const { sound: newSound } = await Audio.Sound.createAsync(
         trapSound,
