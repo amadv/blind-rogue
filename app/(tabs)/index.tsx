@@ -751,6 +751,11 @@ export default function GameScreen() {
             ))}
           </View>
 
+          {/* Reload Level Button */}
+          <Pressable style={styles.reloadButton} onPress={resetGame}>
+            <Text style={styles.reloadButtonText}>[ RELOAD ]</Text>
+          </Pressable>
+
           {/* Instructions overlay */}
           <View style={styles.instructions}>
             <Text style={styles.instructionText}>
@@ -853,6 +858,22 @@ const styles = StyleSheet.create({
   restartButtonText: {
     color: '#ffffff',
     fontSize: 12,
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+  },
+  reloadButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#ffffff',
+  },
+  reloadButtonText: {
+    color: '#ffffff',
+    fontSize: 11,
     fontFamily: 'monospace',
     letterSpacing: 1,
   },
