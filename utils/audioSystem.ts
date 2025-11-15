@@ -9,6 +9,7 @@ const attackSound = require('@/assets/audio/attack.mp3');
 const startSound = require('@/assets/audio/start.wav');
 const trapSound = require('@/assets/audio/trap.wav');
 const fallingSound = require('@/assets/audio/falling.mp3');
+const goblinAttackSound = require('@/assets/audio/goblin-attack.mp3');
 
 let audioContext: AudioContext | null = null;
 let audioModeSet = false;
@@ -23,6 +24,7 @@ const soundCache: { [key: string]: Audio.Sound | null } = {
   start: null,
   trap: null,
   falling: null,
+  goblinAttack: null,
 };
 
 // Goblin sound instances - one per goblin ID
@@ -306,6 +308,19 @@ export async function playDeathSound(): Promise<void> {
     console.log('[Audio] Falling sound completed');
   } catch (error) {
     console.warn('playDeathSound error:', error);
+  }
+}
+
+/**
+ * Play goblin attack sound (when a goblin kills the player)
+ */
+export async function playGoblinAttackSound(): Promise<void> {
+  try {
+    console.log('[Audio] Playing goblin attack sound');
+    await playAudioFile('goblinAttack', goblinAttackSound, 0.8);
+    console.log('[Audio] Goblin attack sound completed');
+  } catch (error) {
+    console.warn('playGoblinAttackSound error:', error);
   }
 }
 

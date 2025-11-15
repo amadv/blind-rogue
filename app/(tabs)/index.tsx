@@ -2,6 +2,7 @@ import {
   playAttackSound,
   playCaveSound,
   playDeathSound,
+  playGoblinAttackSound,
   playHearSound,
   playStartSound,
   playStepSound,
@@ -355,7 +356,7 @@ export default function GameScreen() {
           console.log('Goblin approaching! Player dies...');
           setGameState((prev) => ({ ...prev, status: 'dead' }));
           
-          await playDeathSound().catch(console.warn);
+          await playGoblinAttackSound().catch(console.warn);
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
           
           setTimeout(() => {
@@ -546,7 +547,7 @@ export default function GameScreen() {
         console.log('Attacked approaching goblin! Player dies...');
         setGameState((prev) => ({ ...prev, status: 'dead' }));
         
-        playDeathSound().catch(console.warn);
+        playGoblinAttackSound().catch(console.warn);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(console.warn);
         
         setTimeout(() => {
