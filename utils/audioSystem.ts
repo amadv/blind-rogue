@@ -10,6 +10,7 @@ const startSound = require('@/assets/audio/start.wav');
 const trapSound = require('@/assets/audio/trap.wav');
 const fallingSound = require('@/assets/audio/falling.mp3');
 const goblinAttackSound = require('@/assets/audio/goblin-attack.mp3');
+const heartbeatSound = require('@/assets/audio/heart-beat.mp3');
 
 let audioContext: AudioContext | null = null;
 let audioModeSet = false;
@@ -25,10 +26,14 @@ const soundCache: { [key: string]: Audio.Sound | null } = {
   trap: null,
   falling: null,
   goblinAttack: null,
+  heartbeat: null,
 };
 
 // Goblin sound instances - one per goblin ID
 const goblinSoundInstances: Map<number, Audio.Sound> = new Map();
+
+// Flag to prevent multiple heartbeat sound instances from being created simultaneously
+let heartbeatSoundInitializing = false;
 
 /**
  * Initialize audio context (for web) or ensure audio is ready
@@ -38,7 +43,7 @@ async function initAudio() {
     try {
       audioContext = new AudioContext();
     } catch (error) {
-      console.warn('Failed to create AudioContext:', error);
+      // console.warn('Failed to create AudioContext:', error, ' ', );
     }
   }
   // Request audio permissions on mobile
@@ -559,6 +564,139 @@ export async function stopTrapSound(): Promise<void> {
     }
   } catch (error) {
     console.warn('stopTrapSound error:', error);
+  }
+}
+
+/**
+ * Start or update heartbeat sound
+ * Creates a looping sound that fades based on distance to exit
+ * @param volume - Volume based on distance (0.0 to 1.0)
+ */
+export async function startHeartbeatSound(volume: number): Promise<void> {
+  try {
+    await initAudio();
+    
+    let sound = soundCache.heartbeat;
+    
+    // Create new sound instance if it doesn't exist
+    if (!sound) {
+      // Prevent multiple simultaneous initializations
+      if (heartbeatSoundInitializing) {
+        return;
+      }
+      heartbeatSoundInitializing = true;
+      
+      try {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          heartbeatSound,
+          { shouldPlay: false, volume, isLooping: true }
+        );
+        sound = newSound;
+        soundCache.heartbeat = sound;
+        
+        // Start playing
+        await sound.setPositionAsync(0);
+        await sound.playAsync();
+        console.log('[Audio] Heartbeat sound started (looping)');
+      } finally {
+        heartbeatSoundInitializing = false;
+      }
+    } else {
+      // Check if sound is still playing, restart if needed
+      try {
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          // Ensure looping is enabled
+          if (!status.isLooping) {
+            await sound.setIsLoopingAsync(true);
+          }
+          
+          // If sound stopped playing, restart it
+          if (!status.isPlaying) {
+            await sound.setPositionAsync(0);
+            await sound.playAsync();
+            console.log('[Audio] Heartbeat sound restarted');
+          }
+          
+          // Update volume smoothly
+          await sound.setVolumeAsync(volume);
+        } else {
+          // Sound is not loaded, create a new instance
+          console.warn('[Audio] Heartbeat sound not loaded, creating new instance');
+          try {
+            await sound.unloadAsync();
+          } catch (e) {
+            // Ignore unload errors
+          }
+          soundCache.heartbeat = null;
+          const { sound: newSound } = await Audio.Sound.createAsync(
+            heartbeatSound,
+            { shouldPlay: false, volume, isLooping: true }
+          );
+          sound = newSound;
+          soundCache.heartbeat = sound;
+          await sound.setPositionAsync(0);
+          await sound.playAsync();
+        }
+      } catch (statusError) {
+        // If status check fails, try to restart the sound
+        console.warn('Status check failed for heartbeat, recreating sound:', statusError);
+        try {
+          // Try to unload the old sound
+          try {
+            await sound.unloadAsync();
+          } catch (e) {
+            // Ignore unload errors
+          }
+          soundCache.heartbeat = null;
+          // Create a new instance
+          const { sound: newSound } = await Audio.Sound.createAsync(
+            heartbeatSound,
+            { shouldPlay: false, volume, isLooping: true }
+          );
+          sound = newSound;
+          soundCache.heartbeat = sound;
+          await sound.setPositionAsync(0);
+          await sound.playAsync();
+        } catch (restartError) {
+          console.warn('Failed to recreate heartbeat sound:', restartError);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('startHeartbeatSound error:', error);
+  }
+}
+
+/**
+ * Stop heartbeat sound (when player moves away from exit)
+ */
+export async function stopHeartbeatSound(): Promise<void> {
+  try {
+    const sound = soundCache.heartbeat;
+    if (sound) {
+      try {
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          // Stop the sound regardless of playing state to ensure it stops
+          await sound.stopAsync();
+          // Reset position for next time
+          await sound.setPositionAsync(0).catch(() => {});
+          console.log('[Audio] Heartbeat sound stopped');
+        }
+      } catch (statusError) {
+        // If status check fails, try to stop anyway
+        console.warn('Status check failed, attempting to stop heartbeat sound anyway:', statusError);
+        await sound.stopAsync().catch(() => {});
+        await sound.setPositionAsync(0).catch(() => {});
+      }
+      // Clear the cache entry to ensure a fresh start next time
+      soundCache.heartbeat = null;
+    }
+  } catch (error) {
+    console.warn('stopHeartbeatSound error:', error);
+    // Clear cache even on error to prevent stale references
+    soundCache.heartbeat = null;
   }
 }
 

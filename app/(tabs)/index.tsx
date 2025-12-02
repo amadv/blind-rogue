@@ -11,8 +11,10 @@ import {
   playWinSound,
   preloadTrapSound,
   startGoblinSound,
+  startHeartbeatSound,
   stopAllGoblinSounds,
   stopGoblinSound,
+  stopHeartbeatSound,
   stopTrapSound
 } from '@/utils/audioSystem';
 import {
@@ -62,6 +64,7 @@ export default function GameScreen() {
   const trapCountdownRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const goblinMovementIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const goblinAudioIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const heartbeatAudioIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTapTimeRef = React.useRef<number>(0);
   const gameStateRef = React.useRef<GameState>(gameState);
   const activeGoblinIdsRef = React.useRef<Set<number>>(new Set());
@@ -158,6 +161,46 @@ export default function GameScreen() {
     }, 100); // Update every 100ms for smooth fading
   }, []);
 
+  // Start heartbeat audio system (continuously updates volume based on distance to exit)
+  const startHeartbeatAudio = useCallback(() => {
+    // Clear existing interval first
+    if (heartbeatAudioIntervalRef.current) {
+      clearInterval(heartbeatAudioIntervalRef.current);
+      heartbeatAudioIntervalRef.current = null;
+    }
+    
+    // Stop any existing heartbeat sound before starting new interval
+    stopHeartbeatSound().catch(console.warn);
+    
+    heartbeatAudioIntervalRef.current = setInterval(() => {
+      const currentState = gameStateRef.current;
+      
+      if (currentState.status !== 'playing') {
+        // Stop heartbeat sound if game is not playing
+        stopHeartbeatSound().catch(console.warn);
+        return;
+      }
+
+      // Calculate distance to exit
+      const distance = getDistance(currentState.playerPosition, currentState.endPosition);
+      const maxDistance = 3;
+      
+      if (distance <= maxDistance) {
+        // Calculate volume based on distance
+        // Distance 3: volume = 0.2 (quiet, fade-in threshold)
+        // Distance 0: volume = 1.0 (maximum)
+        // Formula: volume = Math.max(0.2, 1 - (distance / 3) * 0.8)
+        const volume = Math.max(0.2, 1 - (distance / maxDistance) * 0.8);
+        
+        // Start or update the heartbeat sound with calculated volume
+        startHeartbeatSound(volume).catch(console.warn);
+      } else {
+        // Player is too far from exit, stop heartbeat sound
+        stopHeartbeatSound().catch(console.warn);
+      }
+    }, 100); // Update every 100ms for smooth fading
+  }, []);
+
   // Reset game when player dies or wins (creates new level)
   const resetGame = useCallback(() => {
     // Clear any active trap countdown
@@ -165,6 +208,13 @@ export default function GameScreen() {
       clearTimeout(trapCountdownRef.current);
       trapCountdownRef.current = null;
     }
+    // Clear heartbeat audio interval FIRST to prevent new callbacks
+    if (heartbeatAudioIntervalRef.current) {
+      clearInterval(heartbeatAudioIntervalRef.current);
+      heartbeatAudioIntervalRef.current = null;
+    }
+    // Stop heartbeat sound
+    stopHeartbeatSound().catch(console.warn);
     // Stop trap sound if playing
     stopTrapSound().catch(console.warn);
     // Stop all goblin sounds
@@ -189,7 +239,9 @@ export default function GameScreen() {
     startGoblinMovement(newState);
     // Start goblin audio system
     startGoblinAudio();
-  }, [startGoblinMovement, startGoblinAudio]);
+    // Start heartbeat audio system
+    startHeartbeatAudio();
+  }, [startGoblinMovement, startGoblinAudio, startHeartbeatAudio]);
 
   // Restart current level (same grid, reset player to start)
   const restartCurrentLevel = useCallback(() => {
@@ -198,6 +250,13 @@ export default function GameScreen() {
       clearTimeout(trapCountdownRef.current);
       trapCountdownRef.current = null;
     }
+    // Clear heartbeat audio interval FIRST to prevent new callbacks
+    if (heartbeatAudioIntervalRef.current) {
+      clearInterval(heartbeatAudioIntervalRef.current);
+      heartbeatAudioIntervalRef.current = null;
+    }
+    // Stop heartbeat sound
+    stopHeartbeatSound().catch(console.warn);
     // Stop trap sound if playing
     stopTrapSound().catch(console.warn);
     // Stop all goblin sounds
@@ -224,7 +283,12 @@ export default function GameScreen() {
       clearInterval(goblinAudioIntervalRef.current);
     }
     startGoblinAudio();
-  }, [startGoblinMovement, startGoblinAudio]);
+    // Restart heartbeat audio system
+    if (heartbeatAudioIntervalRef.current) {
+      clearInterval(heartbeatAudioIntervalRef.current);
+    }
+    startHeartbeatAudio();
+  }, [startGoblinMovement, startGoblinAudio, startHeartbeatAudio]);
 
   // Initialize goblin movement and audio on mount
   React.useEffect(() => {
@@ -234,6 +298,7 @@ export default function GameScreen() {
     preloadTrapSound().catch(console.warn);
     startGoblinMovement(gameState);
     startGoblinAudio();
+    startHeartbeatAudio();
     return () => {
       if (goblinMovementIntervalRef.current) {
         clearInterval(goblinMovementIntervalRef.current);
@@ -241,8 +306,13 @@ export default function GameScreen() {
       if (goblinAudioIntervalRef.current) {
         clearInterval(goblinAudioIntervalRef.current);
       }
+      if (heartbeatAudioIntervalRef.current) {
+        clearInterval(heartbeatAudioIntervalRef.current);
+      }
       // Clean up all goblin sounds on unmount
       stopAllGoblinSounds().catch(console.warn);
+      // Clean up heartbeat sound on unmount
+      stopHeartbeatSound().catch(console.warn);
     };
   }, []); // Only run on mount
 
@@ -445,6 +515,8 @@ export default function GameScreen() {
           }
           // Stop trap sound if playing
           await stopTrapSound().catch(console.warn);
+          // Stop heartbeat sound when reaching exit
+          await stopHeartbeatSound().catch(console.warn);
           setTrapCountdown(null);
           updatedState.status = 'won';
           await playWinSound().catch(console.warn);
